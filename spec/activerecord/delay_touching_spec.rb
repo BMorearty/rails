@@ -161,6 +161,7 @@ describe Activerecord::DelayTouching do
         Regexp.new(%Q{UPDATE "#{entry}" SET "updated_at" = })
       end
     end.flatten
+
     expect(ActiveRecord::Base.connection).to receive(:update).exactly(expected_sql.length).times do |stmt, _, _|
       index = expected_sql.index { |sql| stmt.to_sql =~ sql}
       expect(index).to be, "An unexpected touch occurred: #{stmt.to_sql}"
