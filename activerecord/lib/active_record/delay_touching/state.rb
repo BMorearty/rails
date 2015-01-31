@@ -23,10 +23,10 @@ module ActiveRecord
       # Return the records grouped by the attributes that were touched, and by class:
       # [
       #   [
-      #     nil, { Person => [ person1, person2 ], Pet => [ pet1 ] }
+      #     nil, { Owner => [owner1, owner2], Pet => [pet1] }
       #   ],
       #   [
-      #     :neutered_at, { Pet => [ pet1 ] }
+      #     :neutered_at, { Pet => [pet1] }
       #   ],
       # ]
       def records_by_attrs_and_class
