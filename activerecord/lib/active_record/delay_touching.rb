@@ -1,5 +1,4 @@
-require "activerecord/delay_touching/version"
-require "activerecord/delay_touching/state"
+require "active_record/delay_touching/state"
 
 module ActiveRecord
   module DelayTouching
