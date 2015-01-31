@@ -17,15 +17,15 @@ module DelayTouchingHelper
   end
 
   def owner
-    @owner ||= Owner.create(name: "Rosey")
+    @owner ||= owners(:blackbeard)
   end
 
   def pet1
-    @pet1 ||= Pet.create(name: "Bones")
+    @pet1 ||= owner.pets.first
   end
 
   def pet2
-    @pet2 ||= Pet.create(name: "Ema")
+    @pet2 ||= owner.pets.last
   end
 
   private
@@ -90,7 +90,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching consolidates touches for all instances in a single table" do
-    expect_updates ["pets"] do
+    expect_updates ["pets", "owners"] do
       ActiveRecord::Base.delay_touching do
         pet1.touch
         pet2.touch
@@ -131,15 +131,15 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching can update nonstandard columns" do
-    expect_updates [ "pets" => [ "updated_at", "neutered_at" ] ] do
+    expect_updates [ "owners" => [ "updated_at", "happy_at" ] ] do
       ActiveRecord::Base.delay_touching do
-        pet1.touch :neutered_at
+        owner.touch :happy_at
       end
     end
   end
 
   test "delay_touching splits up nonstandard column touches and standard column touches" do
-    expect_updates [ { "pets" => [ "updated_at", "neutered_at" ]  }, { "pets" => [ "updated_at" ] } ] do
+    expect_updates [ { "pets" => [ "updated_at", "neutered_at" ]  }, { "pets" => [ "updated_at" ] }, "owners" ] do
       ActiveRecord::Base.delay_touching do
         pet1.touch :neutered_at
         pet2.touch
@@ -148,10 +148,10 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching can update multiple nonstandard columns of a single record in different calls to touch" do
-    expect_updates [ { "pets" => [ "updated_at", "neutered_at" ] }, { "pets" => [ "updated_at", "fed_at" ] } ] do
+    expect_updates [ { "owners" => [ "updated_at", "happy_at" ] }, { "owners" => [ "updated_at", "sad_at" ] } ] do
       ActiveRecord::Base.delay_touching do
-        pet1.touch :neutered_at
-        pet1.touch :fed_at
+        owner.touch :happy_at
+        owner.touch :sad_at
       end
     end
   end
@@ -161,11 +161,6 @@ class DelayTouchingTouchTrueTest < ActiveRecord::TestCase
   include DelayTouchingHelper
 
   fixtures :owners, :pets
-
-  setup do
-    owner.pets << pet1
-    owner.pets << pet2
-  end
 
   test "delay_touching consolidates touch: true touches" do
     expect_updates [ "pets", "owners" ] do
