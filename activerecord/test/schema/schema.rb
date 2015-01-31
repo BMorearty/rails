@@ -562,6 +562,8 @@ ActiveRecord::Schema.define do
     t.string :name
     t.integer :owner_id, :integer
     t.timestamps null: false
+    t.datetime :neutered_at
+    t.datetime :fed_at
   end
 
   create_table :pirates, force: true do |t|
