@@ -74,6 +74,7 @@ module ActiveRecord
 
     # Touch the specified records--non-empty set of instances of the same class.
     def self.touch_records(attr, klass, records)
+      # Include the standard updated_at column and any additional specified columns
       attributes = records.first.send(:timestamp_attributes_for_update_in_model)
       attributes << attr if attr
 
@@ -99,5 +100,3 @@ module ActiveRecord
     end
   end
 end
-
-ActiveRecord::Base.include ActiveRecord::DelayTouching
