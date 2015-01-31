@@ -28,7 +28,7 @@ module ActiveRecord
       #   end
       #
       def delay_touching(&block)
-        DelayTouching.call &block
+        DelayTouching.call(&block)
       end
 
       # Are we currently executing in a delay_touching block?
