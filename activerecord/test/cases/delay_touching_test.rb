@@ -1,11 +1,11 @@
-require_relative 'helper'
-require 'active_support/testing/autorun'
+require 'cases/helper'
+require 'models/owner'
+require 'models/pet'
 
 module DelayTouchingHelper
-  def expect_updates(tables)
+  def expect_updates(tables_and_columns)
     capture_sql { yield }
-  ensure
-    expected_sql = expected_sql_for(tables)
+    expected_sql = expected_sql_for(tables_and_columns)
     ActiveRecord::SQLCounter.log.each do |stmt|
       if stmt =~ /UPDATE /i
         index = expected_sql.index { |expected_stmt| stmt =~ expected_stmt }
@@ -13,11 +13,11 @@ module DelayTouchingHelper
         expected_sql.delete_at(index)
       end
     end
-    assert_empty expected_sql, "Some of the expected updates were not executed."
+    assert_empty expected_sql, "Some of the expected updates were not executed"
   end
 
-  def person
-    @person ||= Person.create(name: "Rosey")
+  def owner
+    @owner ||= Owner.create(name: "Rosey")
   end
 
   def pet1
@@ -30,8 +30,8 @@ module DelayTouchingHelper
 
   private
 
-  def expected_sql_for(tables)
-    tables.map do |entry|
+  def expected_sql_for(tables_and_columns)
+    tables_and_columns.map do |entry|
       if entry.kind_of?(Hash)
         entry.map do |table, columns|
           Regexp.new(%{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } })
@@ -46,17 +46,19 @@ end
 class DelayTouchingTest < ActiveRecord::TestCase
   include DelayTouchingHelper
 
+  fixtures :owners, :pets
+
   test "touch returns true in a delay_touching block" do
     ActiveRecord::Base.delay_touching do
-      assert_equal true, person.touch
+      assert_equal true, owner.touch
     end
   end
 
   test "delay_touching consolidates touches on a single record" do
-    expect_updates ["people"] do
+    expect_updates ["owners"] do
       ActiveRecord::Base.delay_touching do
-        person.touch
-        person.touch
+        owner.touch
+        owner.touch
       end
     end
   end
@@ -64,28 +66,26 @@ class DelayTouchingTest < ActiveRecord::TestCase
   test "delay_touching sets updated_at on the in-memory instance when it eventually touches the record" do
     original_time = new_time = nil
 
-    Timecop.freeze(2014, 7, 4, 12, 0, 0) do
-      original_time = Time.current
-      person.touch
+    Time.stubs(:now).returns(Time.new(2014, 7, 4, 12, 0, 0))
+    original_time = Time.current
+    owner.touch
+
+    Time.stubs(:now).returns(Time.new(2014, 7, 10, 12, 0, 0))
+    new_time = Time.current
+    ActiveRecord::Base.delay_touching do
+      owner.touch
+      assert_equal original_time, owner.updated_at
+      assert_not owner.changed?
     end
 
-    Timecop.freeze(2014, 7, 10, 12, 0, 0) do
-      new_time = Time.current
-      ActiveRecord::Base.delay_touching do
-        person.touch
-        assert_equal original_time, person.updated_at
-        assert_not person.changed?
-      end
-    end
-
-    assert_equal new_time, person.updated_at
-    assert_not person.changed?
+    assert_equal new_time, owner.updated_at
+    assert_not owner.changed?
   end
 
   test "delay_touching does not mark the instance as changed when touch is called" do
     ActiveRecord::Base.delay_touching do
-      person.touch
-      assert_not person.changed?
+      owner.touch
+      assert_not owner.changed?
     end
   end
 
@@ -102,7 +102,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
     expect_updates [] do
       ActiveRecord::Base.no_touching do
         ActiveRecord::Base.delay_touching do
-          person.touch
+          owner.touch
         end
       end
     end
@@ -110,9 +110,9 @@ class DelayTouchingTest < ActiveRecord::TestCase
 
   test "delay_touching only applies touches for which no_touching is off" do
     expect_updates ["pets"] do
-      Person.no_touching do
+      Owner.no_touching do
         ActiveRecord::Base.delay_touching do
-          person.touch
+          owner.touch
           pet1.touch
         end
       end
@@ -120,9 +120,9 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching does not apply nested touches if no_touching was turned on inside delay_touching" do
-    expect_updates [ "people" ] do
+    expect_updates [ "owners" ] do
       ActiveRecord::Base.delay_touching do
-        person.touch
+        owner.touch
         ActiveRecord::Base.no_touching do
           pet1.touch
         end
@@ -160,13 +160,15 @@ end
 class DelayTouchingTouchTrueTest < ActiveRecord::TestCase
   include DelayTouchingHelper
 
+  fixtures :owners, :pets
+
   setup do
-    person.pets << pet1
-    person.pets << pet2
+    owner.pets << pet1
+    owner.pets << pet2
   end
 
   test "delay_touching consolidates touch: true touches" do
-    expect_updates [ "pets", "people" ] do
+    expect_updates [ "pets", "owners" ] do
       ActiveRecord::Base.delay_touching do
         pet1.touch
         pet2.touch
@@ -175,9 +177,9 @@ class DelayTouchingTouchTrueTest < ActiveRecord::TestCase
   end
 
   test "delay_touching does not touch the owning record via touch: true if it was already touched explicitly" do
-    expect_updates [ "pets", "people" ] do
+    expect_updates [ "pets", "owners" ] do
       ActiveRecord::Base.delay_touching do
-        person.touch
+        owner.touch
         pet1.touch
         pet2.touch
       end
