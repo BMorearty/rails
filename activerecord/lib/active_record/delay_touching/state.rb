@@ -1,5 +1,3 @@
-require "activerecord/delay_touching/version"
-
 module ActiveRecord
   module DelayTouching
 
