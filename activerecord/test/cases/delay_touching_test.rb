@@ -173,12 +173,33 @@ class DelayTouchingTest < ActiveRecord::TestCase
     end
 
     pet = klass.first
+    owner = pet.owner
 
-    pet.owner.stubs(:after_touch_callback).once
+    owner.stubs(:after_touch_callback).once
     pet.stubs(:after_touch_callback).once
-    expect_updates [ { "owners" => { ids: pet.owner, columns: [ "updated_at", "happy_at" ] } }, { "pets" => { ids: pet } } ] do
+    expect_updates [ { "owners" => { ids: owner, columns: [ "updated_at", "happy_at" ] } }, { "pets" => { ids: pet } } ] do
       ActiveRecord::Base.delay_touching do
         pet.touch
+        pet.touch
+      end
+    end
+  end
+
+  test "delay_touching keeps iterating as long as after_touch keeps causing more records to be touched" do
+    klass = Class.new(ActiveRecord::Base) do
+      def self.name; 'Pet'; end
+      belongs_to :owner
+
+      # Touch the owner in after_touch instead of using touch: true
+      after_touch :touch_owner
+      def touch_owner; owner.touch; end
+    end
+
+    pet = klass.first
+    owner = pet.owner
+
+    expect_updates [ { "owners" => { ids: owner } }, { "pets" => { ids: pet } } ] do
+      ActiveRecord::Base.delay_touching do
         pet.touch
       end
     end
@@ -211,11 +232,15 @@ class DelayTouchingTest < ActiveRecord::TestCase
     assert_empty expected_sql, "Some of the expected updates were not executed"
   end
 
-  # Creates an array of regular expressions to match the SQL statements that we expect to execute.
+  # Creates an array of regular expressions to match the SQL statements that we expect
+  # to execute.
   #
   # Each element in the tables_ids_and_columns array is in this form:
   #
   #   { "table_name" => { ids: id_or_array_of_ids, columns: column_name_or_array } }
+  #
+  # 'columns' is optional. If it's missing it is assumed that "updated_at" is the only
+  # column that gets touched.
   def expected_sql_for(tables_ids_and_columns)
     tables_ids_and_columns.map do |entry|
       entry.map do |table, options|
