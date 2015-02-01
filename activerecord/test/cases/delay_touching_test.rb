@@ -2,50 +2,7 @@ require 'cases/helper'
 require 'models/owner'
 require 'models/pet'
 
-module DelayTouchingHelper
-  def expect_updates(tables_and_columns)
-    capture_sql { yield }
-    expected_sql = expected_sql_for(tables_and_columns)
-    ActiveRecord::SQLCounter.log.each do |stmt|
-      if stmt =~ /UPDATE /i
-        index = expected_sql.index { |expected_stmt| stmt =~ expected_stmt }
-        assert index, "An unexpected touch occurred: #{stmt}"
-        expected_sql.delete_at(index)
-      end
-    end
-    assert_empty expected_sql, "Some of the expected updates were not executed"
-  end
-
-  def owner
-    @owner ||= owners(:blackbeard)
-  end
-
-  def pet1
-    @pet1 ||= owner.pets.first
-  end
-
-  def pet2
-    @pet2 ||= owner.pets.last
-  end
-
-  private
-
-  def expected_sql_for(tables_and_columns)
-    tables_and_columns.map do |entry|
-      if entry.kind_of?(Hash)
-        entry.map do |table, columns|
-          Regexp.new(%{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } })
-        end
-      else
-        Regexp.new(%{UPDATE "#{entry}" SET "updated_at" = })
-      end
-    end.flatten
-  end
-end
-
 class DelayTouchingTest < ActiveRecord::TestCase
-  include DelayTouchingHelper
-
   fixtures :owners, :pets
 
   test "touch returns true in a delay_touching block" do
@@ -155,12 +112,6 @@ class DelayTouchingTest < ActiveRecord::TestCase
       end
     end
   end
-end
-
-class DelayTouchingTouchTrueTest < ActiveRecord::TestCase
-  include DelayTouchingHelper
-
-  fixtures :owners, :pets
 
   test "delay_touching consolidates touch: true touches" do
     expect_updates [ "pets", "owners" ] do
@@ -179,6 +130,45 @@ class DelayTouchingTouchTrueTest < ActiveRecord::TestCase
         pet2.touch
       end
     end
+  end
+
+  private
+
+  def owner
+    @owner ||= owners(:blackbeard)
+  end
+
+  def pet1
+    @pet1 ||= owner.pets.first
+  end
+
+  def pet2
+    @pet2 ||= owner.pets.last
+  end
+
+  def expect_updates(tables_and_columns)
+    capture_sql { yield }
+    expected_sql = expected_sql_for(tables_and_columns)
+    ActiveRecord::SQLCounter.log.each do |stmt|
+      if stmt =~ /UPDATE /i
+        index = expected_sql.index { |expected_stmt| stmt =~ expected_stmt }
+        assert index, "An unexpected touch occurred: #{stmt}"
+        expected_sql.delete_at(index)
+      end
+    end
+    assert_empty expected_sql, "Some of the expected updates were not executed"
+  end
+
+  def expected_sql_for(tables_and_columns)
+    tables_and_columns.map do |entry|
+      if entry.kind_of?(Hash)
+        entry.map do |table, columns|
+          Regexp.new(%{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } })
+        end
+      else
+        Regexp.new(%{UPDATE "#{entry}" SET "updated_at" = })
+      end
+    end.flatten
   end
 end
 
