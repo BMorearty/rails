@@ -6,7 +6,7 @@ module ActiveRecord
 
     # Override ActiveRecord::Base#touch.
     def touch(*names)
-      if self.class.delay_touching? && !try(:no_touching?)
+      if self.class.delay_touching? && !no_touching?
         DelayTouching.add_record(self, names)
         true
       else
