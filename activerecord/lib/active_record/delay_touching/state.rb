@@ -12,23 +12,18 @@ module ActiveRecord
         @nesting = 0
       end
 
-      def updated(attr, records)
-        @records[attr].subtract records
-        @records.delete attr if @records[attr].empty?
-        @already_updated_records[attr] += records
+      def updated(klass, attrs, records)
+        @already_updated_records[[klass, attrs]] += records
       end
 
-      # Return the records grouped by the attributes that were touched, and by class:
-      # [
-      #   [
-      #     nil, { Owner => [owner1, owner2], Pet => [pet1] }
-      #   ],
-      #   [
-      #     :neutered_at, { Pet => [pet1] }
-      #   ],
-      # ]
-      def records_by_attrs_and_class
-        @records.map { |attrs, records| [attrs, records.group_by(&:class)] }
+      # Return the records grouped by class and columns that were touched:
+      # {
+      #   [ Owner, [ :updated_at ] ]             => [ owner1, owner2 ],
+      #   [ Pet,   [ :neutered_at, :updated_at ] => [ pet1 ] ],
+      #   [ Pet,   [ :updated_at ]               => [ pet2 ] ]
+      # }
+      def records_by_class_and_attrs
+        @records
       end
 
       def more_records?
@@ -36,14 +31,19 @@ module ActiveRecord
       end
 
       def add_record(record, columns)
-        columns = [nil] if columns.empty?
-        columns.each do |column|
-          @records[column] += [ record ] unless @already_updated_records[column].include?(record)
-        end
+        # Include the standard updated_at column and any additional specified columns
+        updated_at_attrs = record.send(:timestamp_attributes_for_update_in_model)
+        columns += updated_at_attrs if updated_at_attrs.present?
+        columns = columns.sort
+
+        @records[[record.class, columns]] += [record] unless @already_updated_records[[record.class, columns]].include?(record)
       end
 
       def clear_records
         @records.clear
+      end
+
+      def clear_already_updated_records
         @already_updated_records.clear
       end
     end
