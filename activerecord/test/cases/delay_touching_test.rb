@@ -20,6 +20,15 @@ class DelayTouchingTest < ActiveRecord::TestCase
     end
   end
 
+  test "delay_touching calls the after_touch callback just once, after the record has been written" do
+    ActiveRecord::Base.delay_touching do
+      owner.stubs(:after_touch_callback).never
+      owner.touch
+      owner.touch
+      owner.stubs(:after_touch_callback).once
+    end
+  end
+
   test "delay_touching sets updated_at on the in-memory instance when it eventually touches the record" do
     original_time = new_time = nil
 
@@ -56,6 +65,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "does nothing if no_touching is on" do
+    owner.stubs(:after_touch_callback).never
     expect_updates [] do
       ActiveRecord::Base.no_touching do
         ActiveRecord::Base.delay_touching do
@@ -66,6 +76,8 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching only applies touches for which no_touching is off" do
+    owner.stubs(:after_touch_callback).never
+    pet1.stubs(:after_touch_callback).once
     expect_updates [ "pets" => { ids: pet1 } ] do
       Owner.no_touching do
         ActiveRecord::Base.delay_touching do
@@ -77,6 +89,8 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching does not apply nested touches if no_touching was turned on inside delay_touching" do
+    owner.stubs(:after_touch_callback).once
+    pet1.stubs(:after_touch_callback).never
     expect_updates [ "owners" => { ids: owner } ] do
       ActiveRecord::Base.delay_touching do
         owner.touch
@@ -138,6 +152,9 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching does not touch the owning record via touch: true if it was already touched explicitly" do
+    owner.stubs(:after_touch_callback).once
+    pet1.stubs(:after_touch_callback).once
+    pet2.stubs(:after_touch_callback).once
     expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, { "owners" => { ids: owner } } ] do
       ActiveRecord::Base.delay_touching do
         owner.touch
@@ -151,11 +168,15 @@ class DelayTouchingTest < ActiveRecord::TestCase
     klass = Class.new(ActiveRecord::Base) do
       def self.name; 'Pet'; end
       belongs_to :owner, :touch => :happy_at
+      after_touch :after_touch_callback
+      def after_touch_callback; end
     end
 
     pet = klass.first
 
-    expect_updates [ { "owners" => { ids: owner, columns: [ "updated_at", "happy_at" ] } }, { "pets" => { ids: pet } } ] do
+    pet.owner.stubs(:after_touch_callback).once
+    pet.stubs(:after_touch_callback).once
+    expect_updates [ { "owners" => { ids: pet.owner, columns: [ "updated_at", "happy_at" ] } }, { "pets" => { ids: pet } } ] do
       ActiveRecord::Base.delay_touching do
         pet.touch
         pet.touch
