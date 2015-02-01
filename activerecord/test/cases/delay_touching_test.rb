@@ -102,7 +102,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching can update nonstandard columns" do
-    expect_updates [ "owners" => { ids: owner, columns: ["updated_at", "happy_at"] } ] do
+    expect_updates [ "owners" => { ids: owner, columns: [ "updated_at", "happy_at" ] } ] do
       ActiveRecord::Base.delay_touching do
         owner.touch :happy_at
       end
@@ -112,7 +112,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   test "delay_touching splits up nonstandard column touches and standard column touches" do
     expect_updates [ { "pets" => { ids: [ pet1 ], columns: [ "updated_at", "neutered_at" ] } },
                      { "pets" => { ids: [ pet2 ], columns: [ "updated_at" ] } },
-                       "owners" ] do
+                       "owners" => { ids: owner } ] do
 
       ActiveRecord::Base.delay_touching do
         pet1.touch :neutered_at
@@ -211,20 +211,23 @@ class DelayTouchingTest < ActiveRecord::TestCase
     assert_empty expected_sql, "Some of the expected updates were not executed"
   end
 
+  # Creates an array of regular expressions to match the SQL statements that we expect to execute.
+  #
+  # Each element in the tables_ids_and_columns array is in this form:
+  #
+  #   { "table_name" => { ids: id_or_array_of_ids, columns: column_name_or_array } }
   def expected_sql_for(tables_ids_and_columns)
     tables_ids_and_columns.map do |entry|
-      if entry.kind_of?(Hash)
-        entry.map do |table, options|
-          ids = Array.wrap(options[:ids])
-          columns = Array.wrap(options[:columns]).presence || ["updated_at"]
-          Regexp.new(%{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } .+#{ids_sql(ids)}\\Z})
-        end
-      else
-        Regexp.new(%{UPDATE "#{entry}" SET "updated_at" = })
+      entry.map do |table, options|
+        ids = Array.wrap(options[:ids])
+        columns = Array.wrap(options[:columns]).presence || ["updated_at"]
+        Regexp.new(%{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } .+#{ids_sql(ids)}\\Z})
       end
     end.flatten
   end
 
+  # in:  array of records or record ids
+  # out: " = 1" or " IN (1, 2)"
   def ids_sql(ids)
     ids = ids.map { |id| id.class.respond_to?(:primary_key) ? id.send(id.class.primary_key) : id }
     ids.length > 1 ? %{ IN \\(#{ids.sort.join(", ")}\\)} : %{ = #{ids.first}}
