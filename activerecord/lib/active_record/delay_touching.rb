@@ -61,8 +61,7 @@ module ActiveRecord
     def self.apply
       begin
         ActiveRecord::Base.transaction do
-          records = state.records_by_class_and_attrs.dup
-          state.clear_records
+          records = state.get_and_clear_records
           records.each do |class_and_attrs, records|
             klass = class_and_attrs.first
             attrs = class_and_attrs.second
