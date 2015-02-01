@@ -16,6 +16,7 @@ class Owner < ActiveRecord::Base
   }
 
   after_commit :execute_blocks
+  after_touch :after_touch_callback
 
   accepts_nested_attributes_for :pets, allow_destroy: true
 
@@ -32,5 +33,8 @@ class Owner < ActiveRecord::Base
       block.call(self)
     end
     @blocks = []
+  end
+
+  def after_touch_callback
   end
 end
