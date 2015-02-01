@@ -112,7 +112,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   test "delay_touching splits up nonstandard column touches and standard column touches" do
     expect_updates [ { "pets" => { ids: [ pet1 ], columns: [ "updated_at", "neutered_at" ] } },
                      { "pets" => { ids: [ pet2 ], columns: [ "updated_at" ] } },
-                       "owners" => { ids: owner } ] do
+                     { "owners" => { ids: owner } } ] do
 
       ActiveRecord::Base.delay_touching do
         pet1.touch :neutered_at
@@ -133,8 +133,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching can update multiple nonstandard columns of a single record in a single call to touch" do
-    expect_updates [ { "owners" => { ids: owner, columns: [ "updated_at", "happy_at" ] } },
-                     { "owners" => { ids: owner, columns: [ "updated_at", "sad_at" ] } } ] do
+    expect_updates [ { "owners" => { ids: owner, columns: [ "updated_at", "happy_at", "sad_at" ] } } ] do
 
       ActiveRecord::Base.delay_touching do
         owner.touch :happy_at, :sad_at
@@ -246,6 +245,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
       entry.map do |table, options|
         ids = Array.wrap(options[:ids])
         columns = Array.wrap(options[:columns]).presence || ["updated_at"]
+        columns = columns.sort
         Regexp.new(%{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } .+#{ids_sql(ids)}\\Z})
       end
     end.flatten
