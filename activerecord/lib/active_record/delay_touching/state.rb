@@ -22,8 +22,12 @@ module ActiveRecord
       #   [ Pet,   [ :neutered_at, :updated_at ] => [ pet1 ] ],
       #   [ Pet,   [ :updated_at ]               => [ pet2 ] ]
       # }
-      def records_by_class_and_attrs
-        @records
+      #
+      # As a side-effect, clears out the list of records.
+      def get_and_clear_records
+        records = @records
+        @records = Hash.new { Set.new }
+        records
       end
 
       def more_records?
