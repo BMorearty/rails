@@ -61,8 +61,8 @@ module ActiveRecord
     def self.apply
       begin
         ActiveRecord::Base.transaction do
-          records = state.get_and_clear_records
-          records.each do |class_and_attrs, records|
+          class_attrs_and_records = state.get_and_clear_records
+          class_attrs_and_records.each do |class_and_attrs, records|
             klass = class_and_attrs.first
             attrs = class_and_attrs.second
             touch_records klass, attrs, records
