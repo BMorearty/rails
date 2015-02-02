@@ -246,7 +246,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
         ids = Array.wrap(options[:ids])
         columns = Array.wrap(options[:columns]).presence || ["updated_at"]
         columns = columns.sort
-        Regexp.new(%{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } .+#{ids_sql(ids)}\\Z})
+        Regexp.new(touch_sql(table, columns, ids))
       end
     end.flatten
   end
@@ -256,6 +256,16 @@ class DelayTouchingTest < ActiveRecord::TestCase
   def ids_sql(ids)
     ids = ids.map { |id| id.class.respond_to?(:primary_key) ? id.send(id.class.primary_key) : id }
     ids.length > 1 ? %{ IN \\(#{ids.sort.join(", ")}\\)} : %{ = #{ids.first}}
+  end
+
+  def touch_sql(table, columns, ids)
+    case ENV['ARCONN']
+    when "mysql", "mysql2"
+      %{UPDATE `#{table}` SET #{columns.map { |column| %{`#{table}`.`#{column}` =.+} }.join(", ") } .+#{ids_sql(ids)}\\Z}
+    when "sqlite3", "postgresql"
+      %{UPDATE "#{table}" SET #{columns.map { |column| %{"#{column}" =.+} }.join(", ") } .+#{ids_sql(ids)}\\Z}
+    else raise "Unexpected database: #{ENV['ARCONN']}"
+    end
   end
 end
 
