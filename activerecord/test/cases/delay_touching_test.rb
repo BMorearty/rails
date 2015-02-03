@@ -5,15 +5,19 @@ require 'models/pet'
 class DelayTouchingTest < ActiveRecord::TestCase
   fixtures :owners, :pets
 
+  test "touch returns true when not in a delay_touching block" do
+    assert_equal true, owner.touch
+  end
+
   test "touch returns true in a delay_touching block" do
-    ActiveRecord::Base.delay_touching do
+    ActiveRecord::Base.transaction do
       assert_equal true, owner.touch
     end
   end
 
-  test "delay_touching consolidates touches on a single record" do
+  test "delay_touching consolidates touches on a single record when inside a transaction" do
     expect_updates [ { "owners" => { ids: owner } } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         owner.touch
         owner.touch
       end
@@ -21,7 +25,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching calls the after_touch callback just once, after the record has been written" do
-    ActiveRecord::Base.delay_touching do
+    ActiveRecord::Base.transaction do
       owner.stubs(:after_touch_callback).never
       owner.touch
       owner.touch
@@ -38,7 +42,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
 
     Time.stubs(:now).returns(Time.new(2014, 7, 10, 12, 0, 0))
     new_time = Time.current
-    ActiveRecord::Base.delay_touching do
+    ActiveRecord::Base.transaction do
       owner.touch
       assert_equal original_time, owner.updated_at
       assert_not owner.changed?
@@ -49,7 +53,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching does not mark the instance as changed when touch is called" do
-    ActiveRecord::Base.delay_touching do
+    ActiveRecord::Base.transaction do
       owner.touch
       assert_not owner.changed?
     end
@@ -57,7 +61,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
 
   test "delay_touching consolidates touches for all instances in a single table" do
     expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, "owners" => { ids: owner } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         pet1.touch
         pet2.touch
       end
@@ -68,7 +72,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
     owner.stubs(:after_touch_callback).never
     expect_updates [] do
       ActiveRecord::Base.no_touching do
-        ActiveRecord::Base.delay_touching do
+        ActiveRecord::Base.transaction do
           owner.touch
         end
       end
@@ -80,7 +84,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
     pet1.stubs(:after_touch_callback).once
     expect_updates [ "pets" => { ids: pet1 } ] do
       Owner.no_touching do
-        ActiveRecord::Base.delay_touching do
+        ActiveRecord::Base.transaction do
           owner.touch
           pet1.touch
         end
@@ -92,7 +96,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
     owner.stubs(:after_touch_callback).once
     pet1.stubs(:after_touch_callback).never
     expect_updates [ "owners" => { ids: owner } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         owner.touch
         ActiveRecord::Base.no_touching do
           pet1.touch
@@ -103,7 +107,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
 
   test "delay_touching can update nonstandard columns" do
     expect_updates [ "owners" => { ids: owner, columns: [ "updated_at", "happy_at" ] } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         owner.touch :happy_at
       end
     end
@@ -114,7 +118,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
                      { "pets" => { ids: [ pet2 ], columns: [ "updated_at" ] } },
                      { "owners" => { ids: owner } } ] do
 
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         pet1.touch :neutered_at
         pet2.touch
       end
@@ -125,7 +129,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
     expect_updates [ { "owners" => { ids: owner, columns: [ "updated_at", "happy_at" ] } },
                      { "owners" => { ids: owner, columns: [ "updated_at", "sad_at" ] } } ] do
 
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         owner.touch :happy_at
         owner.touch :sad_at
       end
@@ -135,7 +139,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   test "delay_touching can update multiple nonstandard columns of a single record in a single call to touch" do
     expect_updates [ { "owners" => { ids: owner, columns: [ "updated_at", "happy_at", "sad_at" ] } } ] do
 
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         owner.touch :happy_at, :sad_at
       end
     end
@@ -143,7 +147,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
 
   test "delay_touching consolidates touch: true touches" do
     expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, { "owners" => { ids: owner } } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         pet1.touch
         pet2.touch
       end
@@ -155,10 +159,53 @@ class DelayTouchingTest < ActiveRecord::TestCase
     pet1.stubs(:after_touch_callback).once
     pet2.stubs(:after_touch_callback).once
     expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, { "owners" => { ids: owner } } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         owner.touch
         pet1.touch
         pet2.touch
+      end
+    end
+  end
+
+  test "delay_touching does not consolidated touches when outside a transaction" do
+    expect_updates [ { "owners" => { ids: owner } },
+                     { "owners" => { ids: owner } } ] do
+      owner.touch
+      owner.touch
+    end
+  end
+
+  test "nested transactions get consolidated into a single set of touches" do
+    expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, { "owners" => { ids: owner } } ] do
+      ActiveRecord::Base.transaction do
+        pet1.touch
+        ActiveRecord::Base.transaction do
+          pet2.touch
+        end
+      end
+    end
+  end
+
+  test "rolling back from a nested transaction does not touch the records in the inner transaction" do
+    expect_updates [ { "pets" => { ids: [ pet1 ] } }, { "owners" => { ids: owner } } ] do
+      ActiveRecord::Base.transaction do
+        pet1.touch
+        ActiveRecord::Base.transaction do
+          pet2.touch
+          raise ActiveRecord::Rollback
+        end
+      end
+    end
+  end
+
+  test "rolling back from an outer transaction does not touch any records" do
+    expect_updates [ ] do
+      ActiveRecord::Base.transaction do
+        pet1.touch
+        ActiveRecord::Base.transaction do
+          pet2.touch
+        end
+        raise ActiveRecord::Rollback
       end
     end
   end
@@ -177,7 +224,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
     owner.stubs(:after_touch_callback).once
     pet.stubs(:after_touch_callback).once
     expect_updates [ { "owners" => { ids: owner, columns: [ "updated_at", "happy_at" ] } }, { "pets" => { ids: pet } } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         pet.touch
         pet.touch
       end
@@ -198,7 +245,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
     owner = pet.owner
 
     expect_updates [ { "owners" => { ids: owner } }, { "pets" => { ids: pet } } ] do
-      ActiveRecord::Base.delay_touching do
+      ActiveRecord::Base.transaction do
         pet.touch
       end
     end
@@ -252,10 +299,12 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   # in:  array of records or record ids
-  # out: " = 1" or " IN (1, 2)"
+  # out: "( = 1|= \?|= \$1)" or " IN (1, 2)"
+  #
+  # In some cases, such as SQLite3 when outside a transaction, the logged SQL uses ? instead of record ids.
   def ids_sql(ids)
     ids = ids.map { |id| id.class.respond_to?(:primary_key) ? id.send(id.class.primary_key) : id }
-    ids.length > 1 ? %{ IN \\(#{ids.sort.join(", ")}\\)} : %{ = #{ids.first}}
+    ids.length > 1 ? %{ IN \\(#{ids.sort.join(", ")}\\)} : %{( = #{ids.first}|= \\?|= \\$1)}
   end
 
   def touch_sql(table, columns, ids)
