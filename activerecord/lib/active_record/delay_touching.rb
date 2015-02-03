@@ -4,9 +4,11 @@ module ActiveRecord
   module DelayTouching
     extend ActiveSupport::Concern
 
-    # Override ActiveRecord::Base#touch.
+    # Override ActiveRecord::Base#touch.  If currently delaying touches, always return
+    # true because there's no way to tell if the write would have failed.
     def touch(*names)
-      if self.class.delay_touching? && !no_touching?
+      if DelayTouching.delay_touching? && !no_touching?
+        add_to_transaction
         DelayTouching.add_record(self, names)
         true
       else
@@ -16,23 +18,24 @@ module ActiveRecord
 
     # These get added as class methods to ActiveRecord::Base.
     module ClassMethods
-      # Lets you batch up your `touch` calls for the duration of a block.
+      # Batches up `touch` calls for the duration of a transaction.
       #
       # ==== Examples
       #
-      #   # Touches Person.first once, not twice, when the block exits.
-      #   ActiveRecord::Base.delay_touching do
+      #   # Touches Person.first and Person.last in a single database round-trip.
+      #   ActiveRecord::Base.transaction do
+      #     Person.first.touch
+      #     Person.last.touch
+      #   end
+      #
+      #   # Touches Person.first once, not twice, when the transaction exits.
+      #   ActiveRecord::Base.transaction do
       #     Person.first.touch
       #     Person.first.touch
       #   end
       #
-      def delay_touching(&block)
-        DelayTouching.call(&block)
-      end
-
-      # Are we currently executing in a delay_touching block?
-      def delay_touching?
-        DelayTouching.state.nesting > 0
+      def transaction(*args, &block)
+        super(*args) { DelayTouching.start(&block) }
       end
     end
 
@@ -44,8 +47,13 @@ module ActiveRecord
       delegate :add_record, to: :state
     end
 
+    # Are we currently executing in a delay_touching block?
+    def self.delay_touching?
+      DelayTouching.state.nesting > 0
+    end
+
     # Start delaying all touches. When done, apply them. (Unless nested.)
-    def self.call
+    def self.start
       state.nesting += 1
       begin
         yield
@@ -57,16 +65,14 @@ module ActiveRecord
       state.nesting -= 1
     end
 
-    # Apply the touches that were delayed.
+    # Apply the touches that were delayed. We're in a transaction already so there's no need to open one.
     def self.apply
       begin
-        ActiveRecord::Base.transaction do
-          class_attrs_and_records = state.get_and_clear_records
-          class_attrs_and_records.each do |class_and_attrs, records|
-            klass = class_and_attrs.first
-            attrs = class_and_attrs.second
-            touch_records klass, attrs, records
-          end
+        class_attrs_and_records = state.get_and_clear_records
+        class_attrs_and_records.each do |class_and_attrs, records|
+          klass = class_and_attrs.first
+          attrs = class_and_attrs.second
+          touch_records klass, attrs, records
         end
       end while state.more_records?
     ensure
@@ -92,8 +98,9 @@ module ActiveRecord
 
         klass.unscoped.where(klass.primary_key => records.sort).update_all(changes)
       end
+
       state.updated klass, attrs, records
-      records.each { |record| record.run_callbacks(:touch) }
+      records.each { |record| record._run_touch_callbacks }
     end
   end
 end
