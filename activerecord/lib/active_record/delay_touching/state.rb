@@ -4,12 +4,9 @@ module ActiveRecord
     # Tracking of the touch state. This class has no class-level data, so you can
     # store per-thread instances in thread-local variables.
     class State
-      attr_accessor :nesting
-
       def initialize
         @records = Hash.new { Set.new }
         @already_updated_records = Hash.new { Set.new }
-        @nesting = 0
       end
 
       def updated(klass, attrs, records)
@@ -49,6 +46,23 @@ module ActiveRecord
 
       def clear_already_updated_records
         @already_updated_records.clear
+      end
+
+      # Merge another state into this one
+      def merge!(other_state)
+        merge_records!(@records, other_state.records)
+        merge_records!(@already_updated_records, other_state.already_updated_records)
+      end
+
+      protected
+
+      attr_accessor :records, :already_updated_records
+
+      # Merge from_records into into_records
+      def merge_records!(into_records, from_records)
+        from_records.each do |key, records|
+          into_records[key] += records
+        end
       end
     end
   end

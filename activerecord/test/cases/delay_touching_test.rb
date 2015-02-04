@@ -186,12 +186,36 @@ class DelayTouchingTest < ActiveRecord::TestCase
     end
   end
 
-  test "rolling back from a nested transaction does not touch the records in the inner transaction" do
-    expect_updates [ { "pets" => { ids: [ pet1 ] } }, { "owners" => { ids: owner } } ] do
+  test "rolling back from a nested transaction without :requires_new touches the records in the inner transaction" do
+    expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, { "owners" => { ids: owner } } ] do
       ActiveRecord::Base.transaction do
         pet1.touch
         ActiveRecord::Base.transaction do
           pet2.touch
+          raise ActiveRecord::Rollback
+        end
+      end
+    end
+  end
+
+  test "rolling back from a nested transaction with :requires_new does not touch the records in the inner transaction" do
+    expect_updates [ { "pets" => { ids: [ pet1 ] } }, { "owners" => { ids: owner } } ] do
+      ActiveRecord::Base.transaction do
+        pet1.touch
+        ActiveRecord::Base.transaction(requires_new: true) do
+          pet2.touch
+          raise ActiveRecord::Rollback
+        end
+      end
+    end
+  end
+
+  test "touching a record in an outer and inner new transaction, then rolling back the inner one, still touches the record" do
+    expect_updates [ { "pets" => { ids: [ pet1 ] } }, { "owners" => { ids: owner } } ] do
+      ActiveRecord::Base.transaction do
+        pet1.touch
+        ActiveRecord::Base.transaction(requires_new: true) do
+          pet1.touch
           raise ActiveRecord::Rollback
         end
       end
@@ -203,7 +227,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
       ActiveRecord::Base.transaction do
         pet1.touch
         ActiveRecord::Base.transaction do
-          pet2.touch
+          pet2.touch :neutered_at
         end
         raise ActiveRecord::Rollback
       end
