@@ -35,12 +35,16 @@ module ActiveRecord
       #   end
       #
       def transaction(*args, &block)
-        super(*args) { DelayTouching.start(&block) }
+        super(*args) { DelayTouching.start(*args, &block) }
       end
     end
 
+    def self.states
+      Thread.current[:delay_touching_states] ||= []
+    end
+
     def self.state
-      Thread.current[:delay_touching_state] ||= State.new
+      states.last
     end
 
     class << self
@@ -49,20 +53,26 @@ module ActiveRecord
 
     # Are we currently executing in a delay_touching block?
     def self.delay_touching?
-      DelayTouching.state.nesting > 0
+      DelayTouching.states.length > 0
     end
 
     # Start delaying all touches. When done, apply them. (Unless nested.)
-    def self.start
-      state.nesting += 1
-      begin
-        yield
-      ensure
-        apply if state.nesting == 1
-      end
+    def self.start(options = {})
+      states.push State.new
+      yield
+      apply if states.length == 1
     ensure
+      merge_transactions unless $! && options[:requires_new]
+
       # Decrement nesting even if `apply` raised an error.
-      state.nesting -= 1
+      states.pop
+    end
+
+    # When exiting a nested transaction, merge the nested transaction's
+    # touched records with the outer transaction's touched records.
+    def self.merge_transactions
+      num_states = states.length
+      states[num_states - 2].merge!(states[num_states - 1]) if num_states > 1
     end
 
     # Apply the touches that were delayed. We're in a transaction already so there's no need to open one.
