@@ -5,6 +5,10 @@ require 'models/pet'
 class DelayTouchingTest < ActiveRecord::TestCase
   fixtures :owners, :pets
 
+  setup do
+    Owner.reset_touch_callbacks
+  end
+
   test "touch returns true when not in a delay_touching block" do
     assert_equal true, owner.touch
   end
@@ -155,9 +159,9 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching does not touch the owning record via touch: true if it was already touched explicitly" do
-    owner.stubs(:after_touch_callback).once
     pet1.stubs(:after_touch_callback).once
     pet2.stubs(:after_touch_callback).once
+
     expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, { "owners" => { ids: owner } } ] do
       ActiveRecord::Base.transaction do
         owner.touch
@@ -165,9 +169,11 @@ class DelayTouchingTest < ActiveRecord::TestCase
         pet2.touch
       end
     end
+
+    assert_equal 1, Owner.after_touch_callbacks
   end
 
-  test "delay_touching does not consolidated touches when outside a transaction" do
+  test "delay_touching does not consolidate touches when outside a transaction" do
     expect_updates [ { "owners" => { ids: owner } },
                      { "owners" => { ids: owner } } ] do
       owner.touch
@@ -176,6 +182,9 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "nested transactions get consolidated into a single set of touches" do
+    pet1.stubs(:after_touch_callback).once
+    pet2.stubs(:after_touch_callback).once
+
     expect_updates [ { "pets" => { ids: [ pet1, pet2 ] } }, { "owners" => { ids: owner } } ] do
       ActiveRecord::Base.transaction do
         pet1.touch
@@ -184,6 +193,8 @@ class DelayTouchingTest < ActiveRecord::TestCase
         end
       end
     end
+
+    assert_equal 1, Owner.after_touch_callbacks
   end
 
   test "rolling back from a nested transaction without :requires_new touches the records in the inner transaction" do
@@ -235,14 +246,14 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching consolidates touch: :column_name touches" do
-    klass = Class.new(ActiveRecord::Base) do
+    pet_klass = Class.new(ActiveRecord::Base) do
       def self.name; 'Pet'; end
       belongs_to :owner, :touch => :happy_at
       after_touch :after_touch_callback
       def after_touch_callback; end
     end
 
-    pet = klass.first
+    pet = pet_klass.first
     owner = pet.owner
 
     owner.stubs(:after_touch_callback).once
@@ -256,7 +267,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
   end
 
   test "delay_touching keeps iterating as long as after_touch keeps causing more records to be touched" do
-    klass = Class.new(ActiveRecord::Base) do
+    pet_klass = Class.new(ActiveRecord::Base) do
       def self.name; 'Pet'; end
       belongs_to :owner
 
@@ -265,7 +276,7 @@ class DelayTouchingTest < ActiveRecord::TestCase
       def touch_owner; owner.touch; end
     end
 
-    pet = klass.first
+    pet = pet_klass.first
     owner = pet.owner
 
     expect_updates [ { "owners" => { ids: owner } }, { "pets" => { ids: pet } } ] do
