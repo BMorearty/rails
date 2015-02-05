@@ -15,9 +15,9 @@ module ActiveRecord
 
       # Return the records grouped by class and columns that were touched:
       # {
-      #   [ Owner, [ :updated_at ] ]             => [ owner1, owner2 ],
-      #   [ Pet,   [ :neutered_at, :updated_at ] => [ pet1 ] ],
-      #   [ Pet,   [ :updated_at ]               => [ pet2 ] ]
+      #   [Owner, [:updated_at]]               => [owner1, owner2],
+      #   [Pet,   [:neutered_at, :updated_at]] => [pet1],
+      #   [Pet,   [:updated_at]]               => [pet2]
       # }
       #
       # As a side-effect, clears out the list of records.
