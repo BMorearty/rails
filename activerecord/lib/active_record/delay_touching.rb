@@ -59,8 +59,9 @@ module ActiveRecord
     # Start delaying all touches. When done, apply them. (Unless nested.)
     def self.start(options = {})
       states.push State.new
-      yield
+      result = yield
       apply if states.length == 1
+      result
     ensure
       merge_transactions unless $! && options[:requires_new]
 
