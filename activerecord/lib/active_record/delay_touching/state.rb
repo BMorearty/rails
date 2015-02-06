@@ -1,4 +1,5 @@
 module ActiveRecord
+  # = Active Record Delay Touching
   module DelayTouching
 
     # Tracking of the touch state. This class has no class-level data, so you can

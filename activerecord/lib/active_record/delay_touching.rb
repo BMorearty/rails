@@ -1,7 +1,8 @@
 require "active_record/delay_touching/state"
 
 module ActiveRecord
-  module DelayTouching
+  # = Active Record Delay Touching
+  module DelayTouching # :nodoc:
     extend ActiveSupport::Concern
 
     # Override ActiveRecord::Base#touch.  If currently delaying touches, always return
@@ -18,18 +19,19 @@ module ActiveRecord
 
     # These get added as class methods to ActiveRecord::Base.
     module ClassMethods
-      # Batches up `touch` calls for the duration of a transaction.
+      # Batches up +touch+ calls for the duration of a transaction.
+      # +after_touch+ callbacks are also delayed until the transaction is committed.
       #
       # ==== Examples
       #
       #   # Touches Person.first and Person.last in a single database round-trip.
-      #   ActiveRecord::Base.transaction do
+      #   Person.transaction do
       #     Person.first.touch
       #     Person.last.touch
       #   end
       #
-      #   # Touches Person.first once, not twice, when the transaction exits.
-      #   ActiveRecord::Base.transaction do
+      #   # Touches Person.first once, not twice, right before the transaction is committed.
+      #   Person.transaction do
       #     Person.first.touch
       #     Person.first.touch
       #   end
@@ -65,7 +67,7 @@ module ActiveRecord
     ensure
       merge_transactions unless $! && options[:requires_new]
 
-      # Decrement nesting even if `apply` raised an error.
+      # Decrement nesting even if +apply+ raised an error.
       states.pop
     end
 
