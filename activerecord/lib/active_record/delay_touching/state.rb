@@ -4,7 +4,7 @@ module ActiveRecord
 
     # Tracking of the touch state. This class has no class-level data, so you can
     # store per-thread instances in thread-local variables.
-    class State
+    class State # :nodoc:
       def initialize
         @records = Hash.new { Set.new }
         @already_updated_records = Hash.new { Set.new }
@@ -15,11 +15,12 @@ module ActiveRecord
       end
 
       # Return the records grouped by class and columns that were touched:
-      # {
-      #   [Owner, [:updated_at]]               => [owner1, owner2],
-      #   [Pet,   [:neutered_at, :updated_at]] => [pet1],
-      #   [Pet,   [:updated_at]]               => [pet2]
-      # }
+      #
+      #   {
+      #     [Owner, [:updated_at]]               => [owner1, owner2],
+      #     [Pet,   [:neutered_at, :updated_at]] => [pet1],
+      #     [Pet,   [:updated_at]]               => [pet2]
+      #   }
       #
       # As a side-effect, clears out the list of records.
       def get_and_clear_records
